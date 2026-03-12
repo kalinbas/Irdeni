@@ -1841,6 +1841,7 @@
 }
 
 @media (max-width: 900px) and (orientation: landscape) {
+  .front-shell,
   .app-shell {
     overflow: hidden;
     padding-top: calc(0.75rem + env(safe-area-inset-top));
@@ -1849,6 +1850,50 @@
 
   .experience-grid {
     width: 100%;
+  }
+
+  .front-window-shell,
+  .boot-screen,
+  .front-center,
+  .death-stage {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .front-main-window {
+    width: min(
+      100%,
+      calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem) * 1.6)
+    );
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
+    padding: 0.55rem;
+  }
+
+  .front-window-banner,
+  .front-window-body {
+    padding: 0.55rem;
+  }
+
+  .front-menu-overlay {
+    width: min(44%, 15rem);
+    margin: 0.55rem;
+    gap: 0.4rem;
+    padding: 0.65rem 0.7rem;
+  }
+
+  .menu-overlay-actions .menu-button {
+    padding: 0.56rem 0.75rem;
+    font-size: 0.94rem;
+  }
+
+  .front-subnote,
+  .front-screen-copy,
+  .intro {
+    font-size: 0.94rem;
+  }
+
+  .front-fullscreen-body {
+    gap: 0.55rem;
   }
 
   .hero-copy h1 {
@@ -1971,6 +2016,19 @@
 
   .mobile-controls {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 780px) and (orientation: landscape) {
+  .front-main-window {
+    aspect-ratio: 8 / 5;
+    min-height: 0;
+  }
+
+  .front-menu-overlay {
+    width: min(46%, 14rem);
+    justify-self: end;
+    margin: 0.5rem;
   }
 }
 
