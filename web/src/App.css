@@ -576,6 +576,7 @@
 }
 
 .mobile-controls {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(9rem, 0.85fr);
   gap: 0.7rem;
@@ -625,6 +626,20 @@
 
 .mobile-utility-button {
   font-size: 0.84rem;
+}
+
+.mobile-fullscreen-button {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  z-index: 1;
+  min-height: 2rem;
+  min-width: 2rem;
+  width: 2rem;
+  padding: 0;
+  border-radius: 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .mobile-control-button:disabled {
@@ -1931,6 +1946,7 @@
     grid-template-rows: auto auto;
     gap: 0.5rem;
     min-height: 0;
+    padding-top: 1.65rem;
   }
 
   .mobile-dpad,
@@ -1941,6 +1957,15 @@
   .mobile-control-button {
     min-height: clamp(2.5rem, 12.5dvh, 3.05rem);
     padding: 0.45rem 0.55rem;
+  }
+
+  .mobile-fullscreen-button {
+    top: 0;
+    right: 0;
+    min-height: 1.8rem;
+    min-width: 1.8rem;
+    width: 1.8rem;
+    font-size: 0.82rem;
   }
 
   .mobile-direction-button {

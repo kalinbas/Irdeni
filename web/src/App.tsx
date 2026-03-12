@@ -1190,6 +1190,7 @@ function App() {
   const contentRef = useRef<LoadedContent | null>(null)
   const overlayResolverRef = useRef<((value: unknown) => void) | null>(null)
   const eventDepthRef = useRef(0)
+  const gameInteractionLockRef = useRef(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const mapCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const gameStageRef = useRef<HTMLDivElement | null>(null)
@@ -1230,6 +1231,7 @@ function App() {
   const [saveScreenMessage, setSaveScreenMessage] = useState('')
   const [hideSceneUntilReveal, setHideSceneUntilReveal] = useState(false)
   const [viewportState, setViewportState] = useState<ViewportState>(() => readViewportState())
+  const [isGameInteractionLocked, setIsGameInteractionLocked] = useState(false)
 
   const runtime = runtimeRef.current
   const activeMap = runtime ? getActiveMap(runtime) : null
@@ -1283,12 +1285,29 @@ function App() {
     setRenderVersion((previous) => previous + 1)
   }
 
+  async function runLockedGameInteraction(task: () => Promise<void>) {
+    if (gameInteractionLockRef.current) {
+      return
+    }
+
+    gameInteractionLockRef.current = true
+    setIsGameInteractionLocked(true)
+
+    try {
+      await task()
+    } finally {
+      gameInteractionLockRef.current = false
+      setIsGameInteractionLocked(false)
+    }
+  }
+
   const canControl = Boolean(
     screen === 'game' &&
       runtime?.gameStarted &&
       !runtime?.gameEnded &&
       (!overlay || isAmbientMessageOverlay) &&
-      eventDepthRef.current === 0,
+      eventDepthRef.current === 0 &&
+      !isGameInteractionLocked,
   )
   const inlineDialogOverlay =
     overlay?.type === 'message' || overlay?.type === 'choice' || overlay?.type === 'textInput' ? overlay : null
@@ -1757,18 +1776,6 @@ function App() {
     void handleDeath()
   })
 
-  const releaseBlockingMessage = useEffectEvent(() => {
-    releaseMessageOverlay()
-  })
-
-  useEffect(() => {
-    if (!isBlockingMessageOverlay || !isInlineDialogTextFullyVisible || !isLastMessagePage) {
-      return
-    }
-
-    releaseBlockingMessage()
-  }, [isBlockingMessageOverlay, isInlineDialogTextFullyVisible, isLastMessagePage])
-
   useEffect(() => {
     const activeRuntime = runtimeRef.current
 
@@ -1930,11 +1937,11 @@ function App() {
       return
     }
 
-    if (!canControl) {
+    if (!canControl || gameInteractionLockRef.current) {
       return
     }
 
-    void movePlayer(direction)
+    void runLockedGameInteraction(() => movePlayer(direction))
   }
 
   function handleConfirmInput(options?: { allowTextSubmit?: boolean }) {
@@ -1977,7 +1984,11 @@ function App() {
     }
 
     if (overlay?.type === 'inventory') {
-      void applyInventorySelection()
+      if (gameInteractionLockRef.current) {
+        return
+      }
+
+      void runLockedGameInteraction(() => applyInventorySelection())
       return
     }
 
@@ -2007,15 +2018,20 @@ function App() {
       return
     }
 
-    if (!canControl) {
+    if (!canControl || gameInteractionLockRef.current) {
       return
     }
 
-    void triggerAction()
+    void runLockedGameInteraction(() => triggerAction())
   }
 
   function handleBackInput() {
     if (screen !== 'game') {
+      return
+    }
+
+    if (isBlockingMessageOverlay) {
+      advanceMessageOverlay()
       return
     }
 
@@ -2052,7 +2068,7 @@ function App() {
   }
 
   function handleInventoryShortcut() {
-    if (screen !== 'game' || overlay || !canControl) {
+    if (screen !== 'game' || overlay || !canControl || gameInteractionLockRef.current) {
       return
     }
 
@@ -2060,7 +2076,7 @@ function App() {
   }
 
   function handleJournalShortcut() {
-    if (screen !== 'game' || overlay || !canControl) {
+    if (screen !== 'game' || overlay || !canControl || gameInteractionLockRef.current) {
       return
     }
 
@@ -2068,11 +2084,11 @@ function App() {
   }
 
   function handleSaveShortcut() {
-    if (screen !== 'game' || overlay || !canControl) {
+    if (screen !== 'game' || overlay || !canControl || gameInteractionLockRef.current) {
       return
     }
 
-    void quicksaveCurrentGame()
+    void runLockedGameInteraction(() => quicksaveCurrentGame())
   }
 
   const handleGlobalKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -2310,7 +2326,10 @@ function App() {
     const pages = paginateDialogText(overlay.text, dialogLineLength)
     if (dialogPageIndex < pages.length - 1) {
       setDialogPageIndex((previous) => previous + 1)
+      return
     }
+
+    releaseMessageOverlay()
   }
 
   function releaseMessageOverlay() {
@@ -4503,6 +4522,19 @@ function App() {
 
           {showMobileControls ? (
             <section className="mobile-controls" aria-label="Mobile controls">
+              {fullscreenSupported ? (
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-fullscreen-button"
+                  onClick={() => void toggleFullscreen()}
+                  disabled={mobileControlButtonsDisabled}
+                  aria-label="Toggle browser fullscreen"
+                  title="Toggle browser fullscreen"
+                >
+                  ⛶
+                </button>
+              ) : null}
+
               <div className="mobile-dpad" role="group" aria-label="Movement controls">
                 <span className="mobile-dpad-spacer" aria-hidden="true" />
                 <button
