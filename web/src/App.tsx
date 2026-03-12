@@ -76,6 +76,28 @@ const DIRECTION_CONFIG: Record<Direction, { dx: number; dy: number; facing: numb
   right: { dx: 1, dy: 0, facing: 3, label: 'East' },
 }
 
+type ViewportState = {
+  width: number
+  height: number
+  coarsePointer: boolean
+}
+
+function readViewportState(): ViewportState {
+  if (typeof window === 'undefined') {
+    return {
+      width: 1280,
+      height: 720,
+      coarsePointer: false,
+    }
+  }
+
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    coarsePointer: window.matchMedia('(pointer: coarse)').matches || window.navigator.maxTouchPoints > 0,
+  }
+}
+
 type MapCell = {
   terrain: number
   event: number
@@ -1207,6 +1229,7 @@ function App() {
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>(() => createEmptySaveSummaries())
   const [saveScreenMessage, setSaveScreenMessage] = useState('')
   const [hideSceneUntilReveal, setHideSceneUntilReveal] = useState(false)
+  const [viewportState, setViewportState] = useState<ViewportState>(() => readViewportState())
 
   const runtime = runtimeRef.current
   const activeMap = runtime ? getActiveMap(runtime) : null
@@ -1215,6 +1238,8 @@ function App() {
   const isDebugMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug')
   const isBlockingMessageOverlay = overlay?.type === 'message' && overlay.blocking !== false
   const isAmbientMessageOverlay = overlay?.type === 'message' && overlay.blocking === false
+  const isMobileViewport = viewportState.coarsePointer && Math.min(viewportState.width, viewportState.height) <= 900
+  const requiresLandscapeMode = isMobileViewport && viewportState.height > viewportState.width
   const menuEntries: Array<{ label: string; variant: 'primary' | 'ghost'; action: () => void }> = [
     ...(hasActiveRun
       ? [
@@ -1277,6 +1302,8 @@ function App() {
       ? overlay
       : null
   const modalOverlay = overlay && overlay !== inlineDialogOverlay && overlay !== inlineScreenOverlay ? overlay : null
+  const showMobileControls = screen === 'game' && isMobileViewport && !requiresLandscapeMode
+  const mobileControlButtonsDisabled = modalOverlay?.type === 'fade'
   const messagePages = inlineDialogOverlay?.type === 'message' ? paginateDialogText(inlineDialogOverlay.text, dialogLineLength) : []
   const activeMessagePage = messagePages[dialogPageIndex] ?? ''
   const usesRetainedInlineDialogText = Boolean(
@@ -1505,6 +1532,37 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const updateViewportState = () => {
+      setViewportState(readViewportState())
+    }
+
+    updateViewportState()
+    window.addEventListener('resize', updateViewportState)
+
+    return () => {
+      window.removeEventListener('resize', updateViewportState)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMobileViewport || typeof window === 'undefined') {
+      return
+    }
+
+    const orientation = window.screen?.orientation as (ScreenOrientation & {
+      lock?: (orientation: 'landscape') => Promise<void>
+    }) | null
+
+    if (!orientation || typeof orientation.lock !== 'function') {
+      return
+    }
+
+    orientation.lock('landscape').catch(() => {
+      // Most mobile browsers only allow locking during fullscreen or installed app contexts.
+    })
+  }, [isMobileViewport])
 
   useEffect(() => {
     if (!inlineDialogOverlay) {
@@ -1834,6 +1892,189 @@ function App() {
     context.strokeRect((activeRuntime.player.x - 1) * scale, (activeRuntime.player.y - 1) * scale, scale, scale)
   }, [overlay, renderVersion, spriteSheets])
 
+  function handleDirectionalInput(direction: Direction) {
+    if (screen !== 'game') {
+      return
+    }
+
+    if ((overlay?.type === 'choice' || overlay?.type === 'textInput') && !isInlineDialogTextFullyVisible) {
+      return
+    }
+
+    if (overlay?.type === 'choice') {
+      if (direction === 'up' || direction === 'left') {
+        setDialogChoiceSelection((previous) => (previous > 1 ? previous - 1 : overlay.options.length))
+      } else {
+        setDialogChoiceSelection((previous) => (previous < overlay.options.length ? previous + 1 : 1))
+      }
+      return
+    }
+
+    if (overlay?.type === 'inventory') {
+      moveInventorySelection(direction)
+      return
+    }
+
+    if (overlay?.type === 'shopBuy') {
+      moveShopSelection(direction === 'left' || direction === 'up' ? -1 : 1, overlay.items.length)
+      return
+    }
+
+    if (overlay?.type === 'shopSell') {
+      const sellEntries = getSellEntries(runtimeRef.current, overlay)
+      moveShopSelection(direction === 'left' || direction === 'up' ? -1 : 1, sellEntries.length)
+      return
+    }
+
+    if (overlay?.type && !(overlay.type === 'message' && overlay.blocking === false)) {
+      return
+    }
+
+    if (!canControl) {
+      return
+    }
+
+    void movePlayer(direction)
+  }
+
+  function handleConfirmInput(options?: { allowTextSubmit?: boolean }) {
+    const allowTextSubmit = options?.allowTextSubmit ?? false
+
+    if (screen !== 'game') {
+      return
+    }
+
+    if (isBlockingMessageOverlay) {
+      advanceMessageOverlay()
+      return
+    }
+
+    if (isAmbientMessageOverlay && !isInlineDialogTextFullyVisible) {
+      revealInlineDialogText()
+      return
+    }
+
+    if (isAmbientMessageOverlay) {
+      dismissAmbientMessageOverlay()
+      return
+    }
+
+    if ((overlay?.type === 'choice' || overlay?.type === 'textInput') && !isInlineDialogTextFullyVisible) {
+      revealInlineDialogText()
+      return
+    }
+
+    if (overlay?.type === 'choice') {
+      resolveOverlay(dialogChoiceSelection)
+      return
+    }
+
+    if (overlay?.type === 'textInput') {
+      if (allowTextSubmit) {
+        resolveOverlay(textInputValue.toUpperCase())
+      }
+      return
+    }
+
+    if (overlay?.type === 'inventory') {
+      void applyInventorySelection()
+      return
+    }
+
+    if (overlay?.type === 'journal') {
+      closeOverlay()
+      return
+    }
+
+    if (overlay?.type === 'shopBuy') {
+      if (overlay.items.length > 0) {
+        resolveOverlay(wrapIndex(shopSelection, overlay.items.length))
+      }
+      return
+    }
+
+    if (overlay?.type === 'shopSell') {
+      const sellEntries = getSellEntries(runtimeRef.current, overlay)
+
+      if (sellEntries.length > 0) {
+        resolveOverlay(sellEntries[wrapIndex(shopSelection, sellEntries.length)]?.slot ?? null)
+      }
+      return
+    }
+
+    if (overlay?.type === 'mapView' || overlay?.type === 'credits') {
+      resolveOverlay(undefined)
+      return
+    }
+
+    if (!canControl) {
+      return
+    }
+
+    void triggerAction()
+  }
+
+  function handleBackInput() {
+    if (screen !== 'game') {
+      return
+    }
+
+    if (isAmbientMessageOverlay) {
+      dismissAmbientMessageOverlay()
+      return
+    }
+
+    if (overlay?.type === 'inventory' || overlay?.type === 'journal') {
+      closeOverlay()
+      return
+    }
+
+    if (overlay?.type === 'shopBuy' || overlay?.type === 'shopSell') {
+      resolveOverlay(null)
+      return
+    }
+
+    if (overlay?.type === 'mapView' || overlay?.type === 'credits') {
+      resolveOverlay(undefined)
+      return
+    }
+
+    if (overlay) {
+      return
+    }
+
+    if (isViewportMaximized) {
+      setIsViewportMaximized(false)
+      return
+    }
+
+    setScreen('menu')
+  }
+
+  function handleInventoryShortcut() {
+    if (screen !== 'game' || overlay || !canControl) {
+      return
+    }
+
+    openInventory()
+  }
+
+  function handleJournalShortcut() {
+    if (screen !== 'game' || overlay || !canControl) {
+      return
+    }
+
+    void showJournal()
+  }
+
+  function handleSaveShortcut() {
+    if (screen !== 'game' || overlay || !canControl) {
+      return
+    }
+
+    void quicksaveCurrentGame()
+  }
+
   const handleGlobalKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (screen === 'bootLogo' || screen === 'bootLogo2') {
       event.preventDefault()
@@ -1977,32 +2218,6 @@ function App() {
       return
     }
 
-    if (isBlockingMessageOverlay && (event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault()
-      advanceMessageOverlay()
-      return
-    }
-
-    if (isAmbientMessageOverlay && (event.key === 'Enter' || event.key === ' ') && !isInlineDialogTextFullyVisible) {
-      event.preventDefault()
-      revealInlineDialogText()
-      return
-    }
-
-    if (isAmbientMessageOverlay && (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape')) {
-      event.preventDefault()
-      dismissAmbientMessageOverlay()
-      return
-    }
-
-    if ((overlay?.type === 'choice' || overlay?.type === 'textInput') && !isInlineDialogTextFullyVisible) {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        revealInlineDialogText()
-      }
-      return
-    }
-
     if (overlay?.type === 'choice') {
       if (event.key >= '1' && event.key <= '9') {
         const optionIndex = Number.parseInt(event.key, 10) - 1
@@ -2013,171 +2228,35 @@ function App() {
         }
         return
       }
-
-      if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        setDialogChoiceSelection((previous) => (previous > 1 ? previous - 1 : overlay.options.length))
-        return
-      }
-
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        setDialogChoiceSelection((previous) => (previous < overlay.options.length ? previous + 1 : 1))
-        return
-      }
-
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        resolveOverlay(dialogChoiceSelection)
-        return
-      }
-    }
-
-    if (overlay?.type === 'inventory' && event.key === 'Escape') {
-      event.preventDefault()
-      closeOverlay()
-      return
-    }
-
-    if (overlay?.type === 'inventory') {
-      if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        moveInventorySelection('up')
-        return
-      }
-
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        moveInventorySelection('down')
-        return
-      }
-
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        moveInventorySelection('left')
-        return
-      }
-
-      if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        moveInventorySelection('right')
-        return
-      }
-
-      if (event.key === 'Enter' || event.key === ' ' || event.key.toLowerCase() === 'b') {
-        event.preventDefault()
-        void applyInventorySelection()
-        return
-      }
-
-    }
-
-    if (overlay?.type === 'journal' && (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault()
-      closeOverlay()
-      return
-    }
-
-    if (overlay?.type === 'shopBuy') {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        resolveOverlay(null)
-        return
-      }
-
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        moveShopSelection(-1, overlay.items.length)
-        return
-      }
-
-      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-        event.preventDefault()
-        moveShopSelection(1, overlay.items.length)
-        return
-      }
-
-      if ((event.key === 'Enter' || event.key === ' ' || event.key.toLowerCase() === 'b') && overlay.items.length > 0) {
-        event.preventDefault()
-        resolveOverlay(wrapIndex(shopSelection, overlay.items.length))
-        return
-      }
-    }
-
-    if (overlay?.type === 'shopSell') {
-      const sellEntries = getSellEntries(runtimeRef.current, overlay)
-
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        resolveOverlay(null)
-        return
-      }
-
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        moveShopSelection(-1, sellEntries.length)
-        return
-      }
-
-      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-        event.preventDefault()
-        moveShopSelection(1, sellEntries.length)
-        return
-      }
-
-      if ((event.key === 'Enter' || event.key === ' ' || event.key.toLowerCase() === 'b') && sellEntries.length > 0) {
-        event.preventDefault()
-        resolveOverlay(sellEntries[wrapIndex(shopSelection, sellEntries.length)]?.slot ?? null)
-        return
-      }
-    }
-
-    if ((overlay?.type === 'mapView' || overlay?.type === 'credits') && (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault()
-      resolveOverlay(undefined)
-      return
-    }
-
-    if (!overlay && event.key === 'Escape' && isViewportMaximized) {
-      event.preventDefault()
-      setIsViewportMaximized(false)
-      return
-    }
-
-    if (!overlay && event.key === 'Escape') {
-      event.preventDefault()
-      setScreen('menu')
-      return
-    }
-
-    if (!canControl) {
-      return
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault()
-      void movePlayer('up')
+      handleDirectionalInput('up')
     } else if (event.key === 'ArrowDown') {
       event.preventDefault()
-      void movePlayer('down')
+      handleDirectionalInput('down')
     } else if (event.key === 'ArrowLeft') {
       event.preventDefault()
-      void movePlayer('left')
+      handleDirectionalInput('left')
     } else if (event.key === 'ArrowRight') {
       event.preventDefault()
-      void movePlayer('right')
+      handleDirectionalInput('right')
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      void triggerAction()
+      handleConfirmInput()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      handleBackInput()
     } else if (event.key.toLowerCase() === 'i') {
       event.preventDefault()
-      openInventory()
+      handleInventoryShortcut()
     } else if (event.key.toLowerCase() === 'j') {
       event.preventDefault()
-      void showJournal()
+      handleJournalShortcut()
     } else if (event.key.toLowerCase() === 's') {
       event.preventDefault()
-      void quicksaveCurrentGame()
+      handleSaveShortcut()
     } else if (event.key.toLowerCase() === 'f' && event.shiftKey && fullscreenSupported) {
       event.preventDefault()
       void toggleFullscreen()
@@ -3777,6 +3856,18 @@ function App() {
   const journalText = runtime?.almanach || 'Noch kein Tagebucheintrag vorhanden.'
   const fightSpeedLabels = ['sehr langsam', 'langsam', 'mittel', 'schnell', 'aeusserst schnell']
   const walkSpeedLabels = ['sehr langsam', 'langsam', 'mittel', 'schnell', 'sehr schnell', 'abartig schnell', 'maximus']
+  const landscapeNotice = requiresLandscapeMode ? (
+    <section className="mobile-landscape-notice" aria-live="polite">
+      <div className="mobile-landscape-card">
+        <p className="eyebrow">Mobile play</p>
+        <h2>Rotate to landscape</h2>
+        <p>
+          Irdeni uses a wide 320x200 playfield and touch controls. Turn your phone sideways to continue playing on
+          mobile.
+        </p>
+      </div>
+    </section>
+  ) : null
 
   if (screen !== 'game') {
     return (
@@ -3990,6 +4081,8 @@ function App() {
             )}
           </section>
         ) : null}
+
+        {landscapeNotice}
       </main>
     )
   }
@@ -4407,13 +4500,104 @@ function App() {
             )}
 
           </div>
+
+          {showMobileControls ? (
+            <section className="mobile-controls" aria-label="Mobile controls">
+              <div className="mobile-dpad" role="group" aria-label="Movement controls">
+                <span className="mobile-dpad-spacer" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-direction-button"
+                  onClick={() => handleDirectionalInput('up')}
+                  disabled={mobileControlButtonsDisabled}
+                  aria-label="Move up"
+                >
+                  ▲
+                </button>
+                <span className="mobile-dpad-spacer" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-direction-button"
+                  onClick={() => handleDirectionalInput('left')}
+                  disabled={mobileControlButtonsDisabled}
+                  aria-label="Move left"
+                >
+                  ◀
+                </button>
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-action-button"
+                  onClick={() => handleConfirmInput({ allowTextSubmit: true })}
+                  disabled={mobileControlButtonsDisabled}
+                  aria-label="Action"
+                >
+                  Act
+                </button>
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-direction-button"
+                  onClick={() => handleDirectionalInput('right')}
+                  disabled={mobileControlButtonsDisabled}
+                  aria-label="Move right"
+                >
+                  ▶
+                </button>
+                <span className="mobile-dpad-spacer" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-direction-button"
+                  onClick={() => handleDirectionalInput('down')}
+                  disabled={mobileControlButtonsDisabled}
+                  aria-label="Move down"
+                >
+                  ▼
+                </button>
+                <span className="mobile-dpad-spacer" aria-hidden="true" />
+              </div>
+
+              <div className="mobile-utility-grid" role="group" aria-label="Game shortcuts">
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-utility-button"
+                  onClick={() => handleBackInput()}
+                  disabled={mobileControlButtonsDisabled}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-utility-button"
+                  onClick={() => handleInventoryShortcut()}
+                  disabled={mobileControlButtonsDisabled}
+                >
+                  Bag
+                </button>
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-utility-button"
+                  onClick={() => handleJournalShortcut()}
+                  disabled={mobileControlButtonsDisabled}
+                >
+                  Journal
+                </button>
+                <button
+                  type="button"
+                  className="mobile-control-button mobile-utility-button"
+                  onClick={() => handleSaveShortcut()}
+                  disabled={mobileControlButtonsDisabled}
+                >
+                  Save
+                </button>
+              </div>
+            </section>
+          ) : null}
         </div>
       </section>
 
-      {modalOverlay ? (
-        <div className={`overlay-backdrop${modalOverlay.type === 'fade' ? ' fade-only' : ''}`}>
-          {modalOverlay.type === 'fade' ? (
-            <div
+        {modalOverlay ? (
+          <div className={`overlay-backdrop${modalOverlay.type === 'fade' ? ' fade-only' : ''}`}>
+            {modalOverlay.type === 'fade' ? (
+              <div
               className={`fade-screen ${modalOverlay.mode}`}
               style={
                 modalOverlay.durationMs
@@ -4423,12 +4607,14 @@ function App() {
                   : undefined
               }
             />
-          ) : null}
-        </div>
-      ) : null}
-    </main>
-  )
-}
+            ) : null}
+          </div>
+        ) : null}
+
+        {landscapeNotice}
+      </main>
+    )
+  }
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
