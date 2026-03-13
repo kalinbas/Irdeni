@@ -157,6 +157,8 @@ type BattleDuelState = {
   previousPlayerHitText: string
   enemyHitText: string
   previousEnemyHitText: string
+  actionText: string
+  previousActionText: string
   allowInventory: boolean
 }
 
@@ -1232,6 +1234,11 @@ function findBattleEnemyById(battle: BattleState, enemyId: number) {
   return battle.enemies.find((enemy) => enemy.id === enemyId) ?? null
 }
 
+function setBattleDuelAction(duel: BattleDuelState, actionText: string) {
+  duel.previousActionText = duel.actionText
+  duel.actionText = actionText
+}
+
 function App() {
   const language = readLanguageFromSearch(typeof window !== 'undefined' ? window.location.search : '')
   const ui = getUiText(language)
@@ -1240,8 +1247,10 @@ function App() {
   const contentRef = useRef<LoadedContent | null>(null)
   const overlayResolverRef = useRef<((value: unknown) => void) | null>(null)
   const overlayRef = useRef<OverlayState | null>(null)
+  const screenRef = useRef<ScreenState>('loading')
   const eventDepthRef = useRef(0)
   const gameInteractionLockRef = useRef(false)
+  const battleAdvanceStepCountRef = useRef(0)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const mapCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const gameStageRef = useRef<HTMLDivElement | null>(null)
@@ -1283,6 +1292,7 @@ function App() {
   const [isGameInteractionLocked, setIsGameInteractionLocked] = useState(false)
 
   overlayRef.current = overlay
+  screenRef.current = screen
 
   const runtime = runtimeRef.current
   const activeMap = runtime ? getActiveMap(runtime) : null
@@ -1405,8 +1415,11 @@ function App() {
   const visibleInlineDialogText = inlineDialogText.slice(0, dialogVisibleCharacterCount)
   const isInlineDialogTextFullyVisible = dialogVisibleCharacterCount >= inlineDialogText.length
   const isLastMessagePage = inlineDialogOverlay?.type === 'message' && dialogPageIndex >= messagePages.length - 1
+  const battleActionLines = battleDuel ? wrapDialogText(battleDuel.actionText, 52).slice(0, 2) : []
+  const battlePreviousActionLines =
+    battleDuel?.previousActionText ? wrapDialogText(battleDuel.previousActionText, 52).slice(0, 1) : []
   const battleDescriptionLines =
-    battleDuel && activeBattle ? wrapDialogText(activeBattle.enemyDescription, 36).slice(0, 2) : []
+    battleDuel && activeBattle ? wrapDialogText(activeBattle.enemyDescription, 46).slice(0, 1) : []
   const battlePlayerHpRatio = runtime && runtime.stats[2] > 0 ? Math.max(0, Math.min(1, runtime.stats[1] / runtime.stats[2])) : 0
   const battleEnemyHpRatio =
     battleDuelEnemy && battleDuel && battleDuel.enemyMaxHp > 0 ? Math.max(0, Math.min(1, battleDuelEnemy.hp / battleDuel.enemyMaxHp)) : 0
@@ -1967,14 +1980,18 @@ function App() {
       return
     }
 
-    if (overlay?.type === 'message') {
-      if (!isInlineDialogTextFullyVisible) {
-        revealInlineDialogText()
-        return
-      }
+    if (revealInlineDialogTextFromButtonPress()) {
+      return
+    }
 
+    if (overlay?.type === 'message') {
       if (overlay.blocking !== false) {
-        advanceMessageOverlay()
+        const closed = advanceMessageOverlay()
+
+        if (closed) {
+          scheduleMoveAfterMessageDismiss(direction)
+        }
+
         return
       }
 
@@ -2068,18 +2085,7 @@ function App() {
     }
 
     if (overlay?.type === 'inventory') {
-      const allowBattlePauseInventory = Boolean(runtimeRef.current?.battle?.duel?.allowInventory)
-
-      if (gameInteractionLockRef.current && !allowBattlePauseInventory) {
-        return
-      }
-
-      if (allowBattlePauseInventory) {
-        void applyInventorySelection()
-        return
-      }
-
-      void runLockedGameInteraction(() => applyInventorySelection())
+      triggerInventorySelection()
       return
     }
 
@@ -2109,6 +2115,11 @@ function App() {
       return
     }
 
+    if (runtimeRef.current?.battle?.duel?.allowInventory) {
+      battleAdvanceStepCountRef.current += 1
+      return
+    }
+
     if (!canControl || gameInteractionLockRef.current) {
       return
     }
@@ -2118,6 +2129,10 @@ function App() {
 
   function handleBackInput() {
     if (screen !== 'game') {
+      return
+    }
+
+    if (revealInlineDialogTextFromButtonPress()) {
       return
     }
 
@@ -2161,6 +2176,10 @@ function App() {
   function handleInventoryShortcut() {
     const allowBattlePauseInventory = Boolean(runtimeRef.current?.battle?.duel?.allowInventory)
 
+    if (revealInlineDialogTextFromButtonPress()) {
+      return
+    }
+
     if (screen !== 'game' || overlay) {
       return
     }
@@ -2172,7 +2191,39 @@ function App() {
     openInventory()
   }
 
+  function triggerInventorySelection() {
+    const allowBattlePauseInventory = Boolean(runtimeRef.current?.battle?.duel?.allowInventory)
+
+    if (gameInteractionLockRef.current && !allowBattlePauseInventory) {
+      return
+    }
+
+    if (allowBattlePauseInventory) {
+      void applyInventorySelection()
+      return
+    }
+
+    void runLockedGameInteraction(() => applyInventorySelection())
+  }
+
+  function handleBagShortcut() {
+    if (screen !== 'game') {
+      return
+    }
+
+    if (overlay?.type === 'inventory') {
+      triggerInventorySelection()
+      return
+    }
+
+    handleInventoryShortcut()
+  }
+
   function handleJournalShortcut() {
+    if (revealInlineDialogTextFromButtonPress()) {
+      return
+    }
+
     if (screen !== 'game' || overlay || !canControl || gameInteractionLockRef.current) {
       return
     }
@@ -2181,6 +2232,10 @@ function App() {
   }
 
   function handleSaveShortcut() {
+    if (revealInlineDialogTextFromButtonPress()) {
+      return
+    }
+
     if (screen !== 'game' || overlay || !canControl || gameInteractionLockRef.current) {
       return
     }
@@ -2189,6 +2244,10 @@ function App() {
   }
 
   function handleLoadShortcut() {
+    if (revealInlineDialogTextFromButtonPress()) {
+      return
+    }
+
     if (screen !== 'game' || overlay || !canControl || gameInteractionLockRef.current) {
       return
     }
@@ -2347,13 +2406,17 @@ function App() {
       return
     }
 
+    const isStandaloneModifierKey =
+      event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta' || event.key === 'CapsLock'
+
+    if (inlineDialogOverlay && !isInlineDialogTextFullyVisible && isPlainContinueKey && !isStandaloneModifierKey) {
+      event.preventDefault()
+      revealInlineDialogText()
+      return
+    }
+
     if (overlay?.type === 'message' && isPlainContinueKey && !isDirectionalKey) {
       event.preventDefault()
-
-      if (!isInlineDialogTextFullyVisible) {
-        revealInlineDialogText()
-        return
-      }
 
       if (isBlockingMessageOverlay) {
         advanceMessageOverlay()
@@ -2394,6 +2457,9 @@ function App() {
     } else if (event.key === 'Escape') {
       event.preventDefault()
       handleBackInput()
+    } else if (event.key.toLowerCase() === 'b' && (overlay?.type === 'inventory' || !overlay)) {
+      event.preventDefault()
+      handleBagShortcut()
     } else if (event.key.toLowerCase() === 'i') {
       event.preventDefault()
       handleInventoryShortcut()
@@ -2448,6 +2514,59 @@ function App() {
 
   function advanceMessageOverlay() {
     if (overlay?.type !== 'message' || overlay.blocking === false) {
+      return false
+    }
+
+    if (!isInlineDialogTextFullyVisible) {
+      revealInlineDialogText()
+      return false
+    }
+
+    const pages = paginateDialogText(overlay.text, dialogLineLength)
+    if (dialogPageIndex < pages.length - 1) {
+      setDialogPageIndex((previous) => previous + 1)
+      return false
+    }
+
+    return closeMessageOverlay()
+  }
+
+  function closeMessageOverlay() {
+    if (overlayRef.current?.type !== 'message') {
+      return false
+    }
+
+    const resolver = overlayResolverRef.current
+    overlayResolverRef.current = null
+    setOverlay(null)
+    setDialogPageIndex(0)
+    setDialogVisibleCharacterCount(0)
+    resolver?.(undefined)
+    return true
+  }
+
+  function revealInlineDialogText() {
+    setDialogVisibleCharacterCount(inlineDialogText.length)
+  }
+
+  function revealInlineDialogTextFromButtonPress() {
+    if (screen !== 'game') {
+      return false
+    }
+
+    if (
+      (overlay?.type === 'message' || overlay?.type === 'choice' || overlay?.type === 'textInput') &&
+      !isInlineDialogTextFullyVisible
+    ) {
+      revealInlineDialogText()
+      return true
+    }
+
+    return false
+  }
+
+  function handleMessageOverlayClick() {
+    if (overlay?.type !== 'message') {
       return
     }
 
@@ -2456,37 +2575,38 @@ function App() {
       return
     }
 
-    const pages = paginateDialogText(overlay.text, dialogLineLength)
-    if (dialogPageIndex < pages.length - 1) {
-      setDialogPageIndex((previous) => previous + 1)
+    if (overlay.blocking !== false) {
+      advanceMessageOverlay()
       return
     }
 
-    releaseMessageOverlay()
-  }
-
-  function releaseMessageOverlay() {
-    if (overlay?.type !== 'message') {
-      return
-    }
-
-    const resolver = overlayResolverRef.current
-    overlayResolverRef.current = null
-    setOverlay({
-      ...overlay,
-      blocking: false,
-    })
-    resolver?.(undefined)
-  }
-
-  function revealInlineDialogText() {
-    setDialogVisibleCharacterCount(inlineDialogText.length)
+    dismissAmbientMessageOverlay()
   }
 
   function dismissAmbientMessageOverlay() {
     setOverlay((current) => (current?.type === 'message' && current.blocking === false ? null : current))
     setDialogPageIndex(0)
     setDialogVisibleCharacterCount(0)
+  }
+
+  function scheduleMoveAfterMessageDismiss(direction: Direction) {
+    window.requestAnimationFrame(() => {
+      const activeRuntime = runtimeRef.current
+
+      if (
+        screenRef.current !== 'game' ||
+        overlayRef.current !== null ||
+        eventDepthRef.current !== 0 ||
+        gameInteractionLockRef.current ||
+        !activeRuntime?.gameStarted ||
+        activeRuntime.gameEnded ||
+        activeRuntime.battle?.duel
+      ) {
+        return
+      }
+
+      void runLockedGameInteraction(() => movePlayer(direction))
+    })
   }
 
   function moveInventorySelection(direction: Direction) {
@@ -2782,14 +2902,26 @@ function App() {
         return message
       }
 
-      runtimeRef.current = restoreRuntime(content, record.runtime)
-      setOverlay(null)
+      const restoredRuntime = restoreRuntime(content, record.runtime)
+      const loadMessage = ui.saveLoaded
+
+      await performFade('out', Math.round(MAP_TRANSITION_FADE_MS / 16))
+
+      restoredRuntime.status = loadMessage
+      runtimeRef.current = restoredRuntime
       setDialogPageIndex(0)
       setDialogVisibleCharacterCount(0)
       setTextInputValue('')
       setScreen('game')
       setSaveScreenMessage('')
       refresh()
+      await performFade('in', Math.round(MAP_TRANSITION_FADE_MS / 16))
+      setDialogPageIndex(0)
+      setOverlay({
+        type: 'message',
+        text: loadMessage,
+        blocking: false,
+      })
       return null
     } catch (error) {
       const message = error instanceof Error ? error.message : ui.saveLoadFailed
@@ -3672,6 +3804,11 @@ function App() {
         inventoryOpened = true
       }
 
+      if (battleAdvanceStepCountRef.current > 0) {
+        battleAdvanceStepCountRef.current -= 1
+        break
+      }
+
       if (inventoryOpened) {
         if (currentOverlay === null && eventDepthRef.current === 0) {
           break
@@ -3708,6 +3845,7 @@ function App() {
       return
     }
 
+    battleAdvanceStepCountRef.current = 0
     battle.duel = {
       enemyId: enemy.id,
       enemyMaxHp: enemy.maxHp,
@@ -3715,9 +3853,16 @@ function App() {
       previousPlayerHitText: '',
       enemyHitText: '',
       previousEnemyHitText: '',
+      actionText: ui.battleOpeningLine(battle.enemyName),
+      previousActionText: '',
       allowInventory: false,
     }
     refresh()
+    await pauseBattleDuel(enemy.id)
+
+    if (!runtimeRef.current?.battle || runtimeRef.current.battle.duel?.enemyId !== enemy.id) {
+      return
+    }
 
     while (enemy.hp > 0 && activeRuntime.stats[1] > 0) {
       const currentDuel = battle.duel
@@ -3738,9 +3883,11 @@ function App() {
           enemy.hp -= damage
           currentDuel.previousPlayerHitText = currentDuel.playerHitText
           currentDuel.playerHitText = `-${damage}`
+          setBattleDuelAction(currentDuel, ui.battlePlayerHitLine(activeRuntime.player.name, battle.enemyName, damage))
         } else {
           currentDuel.previousPlayerHitText = currentDuel.playerHitText
           currentDuel.playerHitText = '-0'
+          setBattleDuelAction(currentDuel, ui.battlePlayerMissLine(activeRuntime.player.name, battle.enemyName))
         }
 
         refresh()
@@ -3759,9 +3906,11 @@ function App() {
           activeRuntime.stats[1] -= damage
           currentDuel.previousEnemyHitText = currentDuel.enemyHitText
           currentDuel.enemyHitText = `-${damage}`
+          setBattleDuelAction(currentDuel, ui.battleEnemyHitLine(battle.enemyName, activeRuntime.player.name, damage))
         } else {
           currentDuel.previousEnemyHitText = currentDuel.enemyHitText
           currentDuel.enemyHitText = '-0'
+          setBattleDuelAction(currentDuel, ui.battleEnemyMissLine(battle.enemyName, activeRuntime.player.name))
         }
 
         refresh()
@@ -3776,9 +3925,11 @@ function App() {
           activeRuntime.stats[1] -= damage
           currentDuel.previousEnemyHitText = currentDuel.enemyHitText
           currentDuel.enemyHitText = `-${damage}`
+          setBattleDuelAction(currentDuel, ui.battleEnemyHitLine(battle.enemyName, activeRuntime.player.name, damage))
         } else {
           currentDuel.previousEnemyHitText = currentDuel.enemyHitText
           currentDuel.enemyHitText = '-0'
+          setBattleDuelAction(currentDuel, ui.battleEnemyMissLine(battle.enemyName, activeRuntime.player.name))
         }
 
         refresh()
@@ -3797,9 +3948,11 @@ function App() {
           enemy.hp -= damage
           currentDuel.previousPlayerHitText = currentDuel.playerHitText
           currentDuel.playerHitText = `-${damage}`
+          setBattleDuelAction(currentDuel, ui.battlePlayerHitLine(activeRuntime.player.name, battle.enemyName, damage))
         } else {
           currentDuel.previousPlayerHitText = currentDuel.playerHitText
           currentDuel.playerHitText = '-0'
+          setBattleDuelAction(currentDuel, ui.battlePlayerMissLine(activeRuntime.player.name, battle.enemyName))
         }
 
         refresh()
@@ -3812,6 +3965,7 @@ function App() {
     }
 
     battle.duel = null
+    battleAdvanceStepCountRef.current = 0
     refresh()
 
     if (activeRuntime.stats[1] <= 0) {
@@ -4401,11 +4555,28 @@ function App() {
                     </section>
 
                     <section className="battle-fight-panel battle-fight-bottom-panel" aria-label={ui.battleDescriptionAria}>
-                      <h2>{activeBattle.enemyName}:</h2>
-                      {battleDescriptionLines.map((line, index) => (
-                        <p key={`${activeBattle.enemyName}-${index}`}>{line}</p>
+                      <h2>{activeBattle.enemyName}</h2>
+                      {battleActionLines.map((line, index) => (
+                        <p key={`battle-action-${activeBattle.enemyName}-${index}`} className="battle-fight-current-line">
+                          {line}
+                        </p>
                       ))}
-                      {battleDuel.allowInventory ? <span className="battle-fight-hint">{ui.battleInventoryHint}</span> : null}
+                      {battlePreviousActionLines.map((line, index) => (
+                        <p key={`battle-action-prev-${activeBattle.enemyName}-${index}`} className="battle-fight-previous-line">
+                          {line}
+                        </p>
+                      ))}
+                      {battleDescriptionLines.map((line, index) => (
+                        <p key={`${activeBattle.enemyName}-${index}`} className="battle-fight-enemy-note">
+                          {line}
+                        </p>
+                      ))}
+                      {battleDuel.allowInventory ? (
+                        <div className="battle-fight-footer">
+                          <span className="battle-fight-hint">{ui.battleAdvanceHint}</span>
+                          <span className="battle-fight-hint battle-fight-hint-secondary">{ui.battleInventoryHint}</span>
+                        </div>
+                      ) : null}
                     </section>
                   </>
                 ) : null}
@@ -4413,10 +4584,10 @@ function App() {
                 {inlineDialogOverlay?.type === 'message' ? (
                   <section
                     ref={inlineDialogPanelRef}
-                    className={`inline-dialog-panel${isBlockingMessageOverlay ? ' interactive' : ''}`}
+                    className={`inline-dialog-panel interactive`}
                     aria-live="polite"
                     style={dialogPanelStyle}
-                    onClick={isBlockingMessageOverlay ? () => advanceMessageOverlay() : undefined}
+                    onClick={() => handleMessageOverlayClick()}
                   >
                     <p className="inline-dialog-text">{visibleInlineDialogText}</p>
                     {isBlockingMessageOverlay && isInlineDialogTextFullyVisible && !isLastMessagePage ? (
@@ -4459,6 +4630,7 @@ function App() {
                       className="inline-dialog-panel inline-choice-panel"
                       aria-live="polite"
                       style={dialogPanelStyle}
+                      onClick={!isInlineDialogTextFullyVisible ? () => revealInlineDialogText() : undefined}
                     >
                       <p className="inline-dialog-text">{visibleInlineDialogText}</p>
                     </section>
@@ -4495,6 +4667,7 @@ function App() {
                       className="inline-dialog-panel inline-input-panel"
                       aria-live="polite"
                       style={dialogPanelStyle}
+                      onClick={!isInlineDialogTextFullyVisible ? () => revealInlineDialogText() : undefined}
                     >
                       <p className="inline-dialog-text">{visibleInlineDialogText}</p>
                     </section>
@@ -4842,7 +5015,7 @@ function App() {
                 <button
                   type="button"
                   className="mobile-control-button mobile-utility-button"
-                  onClick={() => handleInventoryShortcut()}
+                  onClick={() => handleBagShortcut()}
                   disabled={mobileControlButtonsDisabled}
                 >
                   {ui.bagButton}

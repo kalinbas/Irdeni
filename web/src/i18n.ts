@@ -129,7 +129,7 @@ const UI_TEXT = {
     debugExploreMode: (width: number, height: number) => `${width}x${height} · Erkundungsmodus`,
     debugRuntimeNotStarted: 'Gold-Laufzeit noch nicht gestartet',
     debugToolbarHint:
-      'Enter/Leertaste Aktion · S Speichern · L Laden · I Inventar · J Almanach · F Fenster · Shift+F Browser · Esc Menu',
+      'Enter/Leertaste Aktion · B Tasche/Benutzen · S Speichern · L Laden · I Inventar · J Almanach · F Fenster · Shift+F Browser · Esc Menu',
     debugJumpToMap: 'Zu Karte springen',
     debugJumpPlaceholder: 'Zu Karte springen...',
     debugJump: 'Springen',
@@ -183,6 +183,14 @@ const UI_TEXT = {
     battleStatusAria: 'Kampfstatus',
     battleDescriptionAria: 'Kampfbeschreibung',
     battleInventoryHint: 'I Inventar',
+    battleAdvanceHint: 'Leertaste weiter',
+    battleOpeningLine: (enemyName: string) => `${enemyName} macht sich zum Angriff bereit.`,
+    battlePlayerHitLine: (playerName: string, enemyName: string, damage: number) =>
+      `${playerName} trifft ${enemyName} fuer ${damage} Schaden.`,
+    battlePlayerMissLine: (playerName: string, enemyName: string) => `${playerName} verfehlt ${enemyName}.`,
+    battleEnemyHitLine: (enemyName: string, playerName: string, damage: number) =>
+      `${enemyName} trifft ${playerName} fuer ${damage} Schaden.`,
+    battleEnemyMissLine: (enemyName: string, playerName: string) => `${enemyName} verfehlt ${playerName}.`,
     startCardTitle: 'Gold-Edition-Lauf starten',
     startCardBody: 'Die Laufzeit lädt den originalen Gold-Inhalt und startet bei Event `1`.',
     startGoldAdventure: 'Gold-Abenteuer starten',
@@ -292,7 +300,7 @@ const UI_TEXT = {
     debugExploreMode: (width: number, height: number) => `${width}x${height} · Explore mode`,
     debugRuntimeNotStarted: 'Gold runtime has not started yet',
     debugToolbarHint:
-      'Enter/Space Action · S Save · L Load · I Inventory · J Journal · F Window · Shift+F Browser · Esc Menu',
+      'Enter/Space Action · B Bag/Use · S Save · L Load · I Inventory · J Journal · F Window · Shift+F Browser · Esc Menu',
     debugJumpToMap: 'Jump to map',
     debugJumpPlaceholder: 'Jump to map...',
     debugJump: 'Jump',
@@ -346,6 +354,14 @@ const UI_TEXT = {
     battleStatusAria: 'Battle status',
     battleDescriptionAria: 'Battle description',
     battleInventoryHint: 'I Inventory',
+    battleAdvanceHint: 'Space continue',
+    battleOpeningLine: (enemyName: string) => `${enemyName} gets ready to attack.`,
+    battlePlayerHitLine: (playerName: string, enemyName: string, damage: number) =>
+      `${playerName} hits ${enemyName} for ${damage} damage.`,
+    battlePlayerMissLine: (playerName: string, enemyName: string) => `${playerName} misses ${enemyName}.`,
+    battleEnemyHitLine: (enemyName: string, playerName: string, damage: number) =>
+      `${enemyName} hits ${playerName} for ${damage} damage.`,
+    battleEnemyMissLine: (enemyName: string, playerName: string) => `${enemyName} misses ${playerName}.`,
     startCardTitle: 'Start a Gold Edition run',
     startCardBody: 'The runtime loads the original Gold content and starts at event `1`.',
     startGoldAdventure: 'Start Gold adventure',
@@ -455,7 +471,7 @@ const UI_TEXT = {
     debugExploreMode: (width: number, height: number) => `${width}x${height} · Modo de exploración`,
     debugRuntimeNotStarted: 'La ejecución Gold todavía no ha comenzado',
     debugToolbarHint:
-      'Enter/Espacio Acción · S Guardar · L Cargar · I Inventario · J Diario · F Ventana · Shift+F Navegador · Esc Menú',
+      'Enter/Espacio Acción · B Mochila/Usar · S Guardar · L Cargar · I Inventario · J Diario · F Ventana · Shift+F Navegador · Esc Menú',
     debugJumpToMap: 'Saltar al mapa',
     debugJumpPlaceholder: 'Saltar al mapa...',
     debugJump: 'Saltar',
@@ -509,6 +525,14 @@ const UI_TEXT = {
     battleStatusAria: 'Estado del combate',
     battleDescriptionAria: 'Descripción del combate',
     battleInventoryHint: 'I Inventario',
+    battleAdvanceHint: 'Espacio continuar',
+    battleOpeningLine: (enemyName: string) => `${enemyName} se prepara para atacar.`,
+    battlePlayerHitLine: (playerName: string, enemyName: string, damage: number) =>
+      `${playerName} golpea a ${enemyName} y causa ${damage} de daño.`,
+    battlePlayerMissLine: (playerName: string, enemyName: string) => `${playerName} falla contra ${enemyName}.`,
+    battleEnemyHitLine: (enemyName: string, playerName: string, damage: number) =>
+      `${enemyName} golpea a ${playerName} y causa ${damage} de daño.`,
+    battleEnemyMissLine: (enemyName: string, playerName: string) => `${enemyName} falla contra ${playerName}.`,
     startCardTitle: 'Comenzar una partida Gold Edition',
     startCardBody: 'La ejecución carga el contenido original de Gold y comienza en el evento `1`.',
     startGoldAdventure: 'Comenzar aventura Gold',
