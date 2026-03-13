@@ -25,12 +25,14 @@ It also contains the full original source code and assets. A lot of effort went 
 These screenshots were captured from the current browser build with Playwright.
 
 <p align="center">
-  <img src="docs/readme/irdeni-start-screen.png" alt="Irdeni Gold main menu in the browser version" width="48%">
-  <img src="docs/readme/irdeni-gameplay-opening.png" alt="Irdeni Gold opening gameplay screenshot" width="48%">
+  <img src="docs/readme/irdeni-start-screen.png" alt="Irdeni Gold main menu in the browser version" width="31%">
+  <img src="docs/readme/irdeni-gameplay-opening.png" alt="Irdeni Gold opening gameplay screenshot" width="31%">
+  <img src="docs/readme/irdeni-battle-screen.png" alt="Irdeni Gold battle screen in the browser version" width="31%">
 </p>
 
 <p align="center">
   <img src="docs/readme/irdeni-inventory-screen.png" alt="Irdeni Gold inventory screen in the browser version" width="48%">
+  <img src="docs/readme/irdeni-area-map-screen.png" alt="Irdeni Gold area map screen in the browser version" width="48%">
 </p>
 
 ## Why This Repo Exists
